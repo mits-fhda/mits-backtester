@@ -1,21 +1,21 @@
-"""Trading strategies.
+"""The trading strategies.
 
-Every strategy follows the same simple contract, so they're interchangeable:
+Every strategy works the same way, which is what lets you swap one for
+another. It takes the price table from load_data() plus its own settings, and
+hands back a copy of the table with a "Signal" column added. The signal says
+how much of the stock to own each day:
 
-    input:  a DataFrame from load_data() (it has a "Price" column),
-            plus the strategy's own settings as keyword arguments
-    output: a copy of that DataFrame with a "Signal" column added:
-              1.0        = fully invested in the stock
-              0.0        = all cash
-              in between = partly invested (e.g. 0.6 = 60% stock, 40% cash)
-              NaN        = not enough history yet to decide (the "warm-up")
+    1.0         all in
+    0.0         all cash
+    in between  partly invested, so 0.6 means 60% stock and 40% cash
+    NaN         not enough history to decide yet
 
-    Optional: any column whose name starts with "Line: " is drawn on the
-    price chart (e.g. "Line: 50-day average").
+A strategy can also add columns whose names start with "Line: ", like
+"Line: 50-day average". Those get drawn on the price chart.
 
-A signal on a given day uses only information available at that day's close.
-The backtest engine, not the strategy, is responsible for waiting until the
-next day to act on it.
+A strategy should only ever use prices up to the day it's deciding on. It
+doesn't need to worry about waiting a day before trading, because the engine
+handles that.
 """
 
 import math
@@ -29,10 +29,10 @@ def _check_history(prices, needed):
 
 
 def compute_signals(prices, short_window=50, long_window=200):
-    """Moving-average crossover (trend following).
+    """Moving-average crossover, the classic trend-following rule.
 
-    Hold the stock while the short moving average is above the long moving
-    average (an uptrend); otherwise hold cash.
+    Own the stock while the short-term average price is above the long-term
+    one, which usually means prices are trending up. Otherwise, sit in cash.
     """
     if short_window < 1 or long_window < 1:
         raise ValueError("Moving-average windows must be at least 1 day")
@@ -42,8 +42,8 @@ def compute_signals(prices, short_window=50, long_window=200):
 
     df = prices.copy()
 
-    # Rolling mean = the average of the last N closing prices, recalculated every day.
-    # The first N-1 days have no value (NaN) because there isn't enough history yet.
+    # A rolling mean is the average of the last N prices, recalculated every day.
+    # It's NaN for the first N-1 days, since there aren't N prices to average yet.
     short_average = df["Price"].rolling(window=short_window).mean()
     long_average = df["Price"].rolling(window=long_window).mean()
     df[f"Line: {short_window}-day average"] = short_average
@@ -51,26 +51,25 @@ def compute_signals(prices, short_window=50, long_window=200):
 
     df["Signal"] = (short_average > long_average).astype(float)
 
-    # During warm-up the comparison above is meaningless, so mark it as "unknown".
+    # Before the long average exists, the comparison above doesn't mean anything.
     df.loc[long_average.isna(), "Signal"] = float("nan")
     return df
 
 
 def momentum_signals(prices, lookback=252, skip=21):
-    """Time-series momentum, the "12-minus-1 month" signal from academic research.
+    """Time-series momentum, often called "12 minus 1" in the research.
 
-    Own the stock if it went UP over the past `lookback` days (about a year),
-    ignoring the most recent `skip` days (about a month); otherwise hold cash.
-
-    Why skip the last month? Researchers found that very short-term moves tend
-    to partly reverse, so the most recent month adds noise to the signal.
+    Own the stock if it went up over roughly the past year (`lookback` days),
+    leaving out the most recent month or so (`skip` days). Otherwise, sit in
+    cash. The last month gets left out because researchers found that very
+    short-term moves tend to partly reverse, so including it adds noise.
     """
     if lookback < 2 or skip < 0 or skip >= lookback:
         raise ValueError("Need lookback >= 2 and 0 <= skip < lookback")
     _check_history(prices, lookback)
 
     df = prices.copy()
-    # Return from `lookback` days ago up to `skip` days ago.
+    # The return from `lookback` days ago up to `skip` days ago.
     past_return = df["Price"].shift(skip) / df["Price"].shift(lookback) - 1
 
     df["Signal"] = (past_return > 0).astype(float)
@@ -79,13 +78,15 @@ def momentum_signals(prices, lookback=252, skip=21):
 
 
 def mean_reversion_signals(prices, window=20, entry_z=-1.0):
-    """Mean reversion: buy when the price is unusually far BELOW its recent average.
+    """Mean reversion: buy when the price drops unusually far below its recent average.
+
+    "Unusually far" is measured with a z-score:
 
         z-score = (price - 20-day average) / 20-day standard deviation
 
-    A z-score of -1 means the price is one "typical move" below its average.
-    The bet is that it will snap back up, so we hold the stock while
-    z < entry_z and hold cash otherwise.
+    A z-score of -1 means the price is one typical day-to-day swing below its
+    average. The bet is that it bounces back, so we own the stock while the
+    z-score is below `entry_z` and sit in cash the rest of the time.
     """
     if window < 2:
         raise ValueError("The window must be at least 2 days")
@@ -107,16 +108,15 @@ def mean_reversion_signals(prices, window=20, entry_z=-1.0):
 
 
 def volatility_target_signals(prices, target_vol=0.15, window=20):
-    """Volatility targeting: always invested, but sized to keep risk steady.
+    """Volatility targeting: always invested, but own less when the market gets jumpy.
 
         recent volatility = std of the last 20 daily returns * sqrt(252)
-        position          = target volatility / recent volatility  (max 100%)
+        position          = target volatility / recent volatility, capped at 100%
 
-    When markets are calm we hold the full position; when they get wild
-    (volatility doubles) we cut the position in half. This works because
-    volatility clusters: wild days tend to be followed by more wild days,
-    which is exactly when crashes happen. Scaling positions by volatility is
-    a building block of many hedge-fund strategies (e.g. "risk parity").
+    In calm markets this holds the full position. If volatility doubles, it
+    holds half. The idea works because wild days tend to come in clusters,
+    and crashes happen during those clusters. Sizing positions by volatility
+    shows up in a lot of hedge-fund strategies, "risk parity" being a famous one.
     """
     if target_vol <= 0:
         raise ValueError("target_vol must be positive, e.g. 0.15 for 15%")
@@ -127,13 +127,13 @@ def volatility_target_signals(prices, target_vol=0.15, window=20):
     df = prices.copy()
     recent_vol = df["Price"].pct_change().rolling(window).std() * math.sqrt(TRADING_DAYS_PER_YEAR)
 
-    # No leverage: never invest more than 100% of the portfolio.
+    # Never go above 100%. Investing more than you have would mean borrowing.
     df["Signal"] = (target_vol / recent_vol).clip(upper=1.0)
     return df
 
 
-# Every available strategy. To add one: write a function that follows the
-# contract at the top of this file, then add it here.
+# Every strategy the backtester knows about. To add your own, write a function
+# that works like the ones above and add a line for it here.
 STRATEGIES = {
     "sma": {"label": "Moving-average crossover", "function": compute_signals},
     "momentum": {"label": "Time-series momentum", "function": momentum_signals},

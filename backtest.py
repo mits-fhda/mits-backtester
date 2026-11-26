@@ -1,6 +1,6 @@
-"""MITS Backtester: command-line entry point.
+"""Run the MITS Backtester from the command line.
 
-Examples:
+Some things to try:
     python backtest.py --csv data/SPY.csv --short 50 --long 200
     python backtest.py --csv data/SPY.csv --strategy momentum
     python backtest.py --csv data/SPY.csv --cost-bps 5 --monte-carlo 1000
@@ -72,7 +72,7 @@ def parse_args():
 
 
 def strategy_settings(args):
-    """Pick out the command-line settings that belong to the chosen strategy."""
+    """Grab just the settings that belong to the strategy you picked."""
     settings = {
         "sma": {"short_window": args.short, "long_window": args.long},
         "momentum": {"lookback": args.lookback, "skip": args.skip},
@@ -84,10 +84,10 @@ def strategy_settings(args):
 
 
 def format_metric(name, value):
-    """Show ratios as plain numbers and everything else as percentages."""
+    """Show ratios like Sharpe as plain numbers, and everything else as a percentage."""
     if math.isnan(value):
         return "n/a"
-    if abs(value) < 1e-12:   # tiny rounding errors like -0.0000000001 would print as "-0.00%"
+    if abs(value) < 1e-12:   # otherwise a rounding error like -0.0000000001 prints as "-0.00%"
         value = 0.0
     if name in RATIO_METRICS:
         return f"{value:.2f}"
@@ -132,7 +132,7 @@ def print_monte_carlo_report(summary, num_paths, years, block_size):
 
 
 def run_sweep(prices, args, name):
-    """Run the parameter sweep, print the top results, save the heatmap."""
+    """Run the luck check, print the five best pairs, and save the heatmap."""
     try:
         table, buy_hold = parameter_sweep(prices, cost_per_trade=args.cost_bps / 10_000)
     except (IndexError, ValueError):
@@ -162,7 +162,7 @@ LEADERBOARD_COLUMNS = ["CAGR", "Max Drawdown", "Annualized Volatility", "Sharpe 
 
 
 def run_comparison(prices, args, name):
-    """Run every strategy on the same dates, print a leaderboard, save a chart."""
+    """Run every strategy over the same dates, print the leaderboard, and save a chart."""
     try:
         table, equity_curves = compare_strategies(
             prices, cost_per_trade=args.cost_bps / 10_000, initial_capital=args.capital,

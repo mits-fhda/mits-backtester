@@ -1,9 +1,10 @@
-"""Generate data/sample.csv: a FAKE stock price series for demos and testing.
+"""Make data/sample.csv, a made-up stock price series for demos and testing.
 
-The prices are random (a "random walk" with a slight upward drift), not real
-market data. That lets the repo ship with a runnable example without
-redistributing anyone's data. The random seed is fixed, so running this
-script always produces exactly the same file.
+The prices are random. Each day moves up or down by a random amount, with a
+slight upward drift so it looks roughly like a real stock. Shipping made-up
+data means anyone can try the tool right after downloading it, and we don't
+have to share anyone else's data. The random seed is fixed, so this script
+makes exactly the same file every time.
 
 Usage:
     python scripts/make_sample_data.py
@@ -28,7 +29,7 @@ def main():
     daily_returns = rng.normal(DAILY_DRIFT, DAILY_VOLATILITY, NUM_DAYS)
     close = START_PRICE * np.cumprod(1 + daily_returns)
 
-    # Build plausible Open/High/Low around each close so the file looks like Yahoo's.
+    # Make up believable Open/High/Low prices around each close so the file looks like Yahoo's.
     open_ = close * (1 + rng.normal(0, 0.003, NUM_DAYS))
     high = np.maximum(open_, close) * (1 + np.abs(rng.normal(0, 0.004, NUM_DAYS)))
     low = np.minimum(open_, close) * (1 - np.abs(rng.normal(0, 0.004, NUM_DAYS)))

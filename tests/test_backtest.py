@@ -23,7 +23,7 @@ def test_position_uses_previous_days_signal():
 
 def test_no_look_ahead_strategy_misses_the_day_the_signal_appears():
     # Price jumps +50% on day 1, and the signal also turns on at day 1's close.
-    # A correct backtest must NOT capture that jump: we couldn't have known in advance.
+    # A correct backtest has to miss that jump, since nobody could have known it was coming.
     signals = make_signals([100, 150, 150], [0, 1, 1])
     results = run_backtest(signals, initial_capital=1000)
     assert results["Strategy_Equity"].iloc[-1] == pytest.approx(1000)

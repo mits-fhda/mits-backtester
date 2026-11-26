@@ -1,46 +1,46 @@
-"""The backtest engine: turns daily signals into portfolio value over time."""
+"""The engine: turns a strategy's daily signals into what the portfolio was worth each day."""
 
 
 def run_backtest(signals, initial_capital=10_000, cost_per_trade=0.0):
-    """Simulate the strategy and buy-and-hold over the same period.
+    """Run the strategy and buy-and-hold side by side over the same dates.
 
-    `signals` is the output of a strategy function (it has "Price" and "Signal").
+    `signals` comes from one of the strategy functions, so it has a "Price"
+    column and a "Signal" column.
 
-    Avoiding look-ahead bias:
-        A signal is computed from day t's closing price, so in real life we
-        could only trade on it AFTER the close. We therefore shift the signal
-        forward by one day: the position we hold on day t+1 is the signal from
-        day t. The strategy then earns day t+1's return (close t -> close t+1)
-        only if the signal said "own it" at close t.
+    The important detail is timing. A signal is worked out from a day's closing
+    price, which means in real life you could only act on it once the market
+    had closed. So the signal from one day sets the position for the next day.
+    Without that delay, the backtest would get to trade on information it
+    couldn't have had yet, and the results would look better than they really
+    were.
 
-    Both portfolios start on the first day the strategy has a valid signal,
-    so they cover exactly the same dates.
+    Both portfolios start on the first day the strategy has a signal, so
+    they're compared over exactly the same stretch of time.
 
-    Trading costs: `cost_per_trade` is the fraction of the portfolio lost each
-    time we buy or sell (commissions + bid/ask spread + slippage). For example
-    0.0005 means 0.05%, often written "5 basis points".
+    `cost_per_trade` is the slice of the portfolio you lose every time you buy
+    or sell, to cover fees and the bid/ask spread. 0.0005 is 0.05%, which
+    traders call "5 basis points".
 
-    Simplifications: cash earns 0%, and the whole portfolio is either fully
-    invested or fully in cash.
+    To keep things simple, cash doesn't earn any interest.
     """
-    # Drop the warm-up period where the strategy can't make a decision yet.
+    # Skip the first few rows where the strategy doesn't have enough history to decide.
     df = signals.dropna(subset=["Signal"]).copy()
 
-    # Daily return of the stock: today's price / yesterday's price - 1.
-    # The first day has no "yesterday", so its return is set to 0.
+    # How much the stock moved each day, e.g. 0.01 for a 1% gain.
+    # The first day has nothing to compare against, so we call it 0.
     df["Market_Return"] = df["Price"].pct_change().fillna(0.0)
 
-    # THE KEY LINE: yesterday's signal decides today's position.
+    # This is the line that prevents look-ahead bias: yesterday's signal sets today's position.
     df["Position"] = df["Signal"].shift(1).fillna(0.0)
 
-    # If we're in the market we earn the market's return, otherwise 0 (cash).
+    # Fully invested earns the whole day's move, half invested earns half, cash earns nothing.
     df["Strategy_Return"] = df["Position"] * df["Market_Return"]
 
-    # On days the position changes (a buy or a sell), pay the trading cost.
+    # Any day the position changes, we bought or sold something, so we pay the trading cost.
     trades = df["Position"].diff().abs().fillna(0.0)
     df["Strategy_Return"] -= trades * cost_per_trade
 
-    # Growth of the starting capital: multiply together (1 + return) for every day.
+    # Compound the daily returns to get the portfolio's value each day.
     df["BuyHold_Equity"] = initial_capital * (1 + df["Market_Return"]).cumprod()
     df["Strategy_Equity"] = initial_capital * (1 + df["Strategy_Return"]).cumprod()
 
@@ -48,10 +48,10 @@ def run_backtest(signals, initial_capital=10_000, cost_per_trade=0.0):
 
 
 def count_trades(positions):
-    """Number of times the position changed (each buy or sell counts as one trade)."""
+    """How many times the position changed. Every buy or sell counts as one."""
     return int((positions.diff().abs() > 0).sum())
 
 
 def time_in_market(positions):
-    """Fraction of days the strategy held the stock (between 0 and 1)."""
+    """How invested the strategy was on average, from 0 (always cash) to 1 (always all in)."""
     return float(positions.mean())

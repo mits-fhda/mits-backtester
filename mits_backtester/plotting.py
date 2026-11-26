@@ -1,19 +1,20 @@
-"""Charts for a backtest.
+"""All the charts.
 
-Each chart function builds and returns a matplotlib Figure (so the web app can
-show it), and also saves it as a PNG when given a `path` (for the command line).
+Each chart function returns a matplotlib figure, which is what the web app
+shows. If you also give it a `path`, it saves the chart there as a PNG, which
+is what the command-line tool does.
 """
 
 from pathlib import Path
 
 import matplotlib
 
-matplotlib.use("Agg")  # draw straight to files; no window needed (works on servers too)
+matplotlib.use("Agg")  # draw to files instead of opening windows, so it also works on servers
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import FuncFormatter
 
-# One small, consistent color scheme for every chart.
+# One set of colors for every chart, so they all look like they belong together.
 SURFACE = "#fcfcfb"
 TEXT = "#0b0b0b"
 MUTED_TEXT = "#52514e"
@@ -27,7 +28,7 @@ COMPARISON_COLORS = ["#2a78d6", "#1baf7a", "#6250d6", "#e87ba4"]  # one per stra
 
 
 def _style_axes(ax):
-    """Quiet axes so the data stands out: light grid, no top/right border."""
+    """Make the axes quiet so the data stands out, with a light grid and no top or right border."""
     ax.set_facecolor(SURFACE)
     ax.grid(True, color=GRID, linewidth=0.8)
     ax.set_axisbelow(True)
@@ -39,7 +40,7 @@ def _style_axes(ax):
 
 
 def _finish(fig, path):
-    """Tidy the layout, save to `path` if one was given, and return the figure."""
+    """Tidy up the layout, save the chart if we were given a path, and hand back the figure."""
     fig.tight_layout()
     if path is not None:
         fig.savefig(path, dpi=150, facecolor=SURFACE)
@@ -61,10 +62,11 @@ def _label_line_end(ax, series, text, color):
 
 
 def plot_price_and_signals(signals, results, title, path=None):
-    """Chart (a): price with the strategy's indicator lines, plus how invested it was.
+    """The price chart, plus a strip underneath showing how invested the strategy was.
 
-    Top panel: price and every "Line: ..." column the strategy added.
-    Bottom panel: the strategy's position each day (0% = cash, 100% = all in).
+    The top part shows the price and any "Line: ..." columns the strategy
+    added. The strip at the bottom shows the position each day, from 0% (all
+    cash) to 100% (all in).
     """
     fig, (ax, ax_position) = plt.subplots(
         2, 1, figsize=(11, 6.5), sharex=True, facecolor=SURFACE,
@@ -93,7 +95,7 @@ def plot_price_and_signals(signals, results, title, path=None):
 
 
 def plot_equity_curves(results, initial_capital, title, path=None):
-    """Chart (b): growth of the starting capital, strategy vs. buy-and-hold."""
+    """How the starting amount grew, strategy versus buy-and-hold."""
     fig, ax = plt.subplots(figsize=(11, 5.5), facecolor=SURFACE)
     _style_axes(ax)
 
@@ -116,7 +118,7 @@ def plot_equity_curves(results, initial_capital, title, path=None):
 
 def plot_results(signals, results, initial_capital, strategy_label="Strategy",
                  name="Stock", output_dir="output"):
-    """Create both charts and return the paths of the saved PNG files."""
+    """Save the price chart and the growth chart, and return where they were saved."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -131,16 +133,17 @@ def plot_results(signals, results, initial_capital, strategy_label="Strategy",
         title=f"{name}: growth of ${initial_capital:,.0f}, {strategy_label.lower()} vs. buy and hold",
         path=equity_path,
     )
-    plt.close(price_fig)   # free the memory once the files are saved
+    plt.close(price_fig)   # the files are saved, so we can free up the memory
     plt.close(equity_fig)
     return price_path, equity_path
 
 
 def plot_monte_carlo_paths(simulations, initial_capital, years, title, path=None):
-    """Fan chart: the range of simulated outcomes over time for each strategy.
+    """A "fan chart" showing the range of made-up histories over time.
 
-    Dark band = middle 50% of paths (25th-75th percentile),
-    light band = middle 90% (5th-95th), line = median path.
+    The dark band covers the middle half of the histories (25th to 75th
+    percentile), the light band covers the middle 90% (5th to 95th), and the
+    line is the median.
     """
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True, facecolor=SURFACE)
@@ -171,7 +174,7 @@ def plot_monte_carlo_paths(simulations, initial_capital, years, title, path=None
 
 
 def plot_monte_carlo_drawdowns(simulations, title, path=None):
-    """Histogram of each simulated path's worst drawdown."""
+    """A histogram of the worst drop in each made-up history."""
 
     fig, ax = plt.subplots(figsize=(11, 5), facecolor=SURFACE)
     _style_axes(ax)
@@ -199,7 +202,7 @@ def plot_monte_carlo_drawdowns(simulations, title, path=None):
 
 def plot_monte_carlo(simulations, initial_capital, years, num_paths,
                      name="Stock", output_dir="output"):
-    """Create both Monte Carlo charts and return the paths of the saved PNG files."""
+    """Save both Monte Carlo charts and return where they were saved."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -222,11 +225,11 @@ def plot_monte_carlo(simulations, initial_capital, years, num_paths,
 
 
 def plot_sweep_heatmap(sweep_table, buy_hold_sharpe, highlight=None, title="", path=None):
-    """Grid of Sharpe ratios for every (short, long) window pair.
+    """A grid of Sharpe ratios, one square for each (short, long) window pair.
 
-    Color shows how each pair compares with buy-and-hold's Sharpe ratio:
-    blue = better, orange = worse, gray = about the same. The number in each
-    cell is the Sharpe ratio itself. `highlight` = (short, long) to outline.
+    The number in each square is that pair's Sharpe ratio. The color compares
+    it with buy-and-hold: blue is better, orange is worse, and gray is about
+    the same. Pass `highlight` as a (short, long) pair to outline that square.
     """
     from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
     from matplotlib.patches import Rectangle
@@ -244,7 +247,7 @@ def plot_sweep_heatmap(sweep_table, buy_hold_sharpe, highlight=None, title="", p
     ax.set_facecolor(SURFACE)
     image = ax.imshow(difference.to_numpy(), cmap=colormap, norm=norm, aspect="auto")
 
-    # Write the Sharpe ratio in every cell (blank where short >= long).
+    # Write the Sharpe ratio in each square. Squares where short >= long stay blank.
     for row, short in enumerate(grid.index):
         for col, long in enumerate(grid.columns):
             value = grid.loc[short, long]
@@ -276,10 +279,11 @@ def plot_sweep_heatmap(sweep_table, buy_hold_sharpe, highlight=None, title="", p
 
 
 def plot_strategy_comparison(equity_curves, title, path=None):
-    """Growth of the same starting amount for every strategy and buy-and-hold.
+    """How the same starting amount grew under every strategy, plus buy-and-hold.
 
-    `equity_curves` is a DataFrame with one column per strategy (same dates).
-    A log scale is used so equal percentage moves look equal in size.
+    `equity_curves` has one column per strategy, all over the same dates. The
+    chart uses a log scale, so a 10% move looks the same size whether the
+    portfolio is worth $10,000 or $200,000.
     """
     fig, ax = plt.subplots(figsize=(11, 5.5), facecolor=SURFACE)
     _style_axes(ax)

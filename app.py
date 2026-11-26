@@ -1,12 +1,13 @@
-"""MITS Backtester: interactive web app.
+"""The MITS Backtester web app.
 
-Run it with:
+To run it on your own computer:
     streamlit run app.py
 
-Streamlit re-runs this whole script from top to bottom every time a control
-changes, so the script reads like a simple recipe: read the controls, run the
-backtest, show the results. It reuses exactly the same functions as the
-command-line tool; this file only handles the display.
+Streamlit reruns this whole file from top to bottom every time someone moves
+a slider, so it reads like a recipe: read the settings, run the backtest, show
+the results. All the actual number crunching happens in the mits_backtester
+package, the same code the command-line tool uses. This file just puts it on
+a page.
 """
 
 import math
@@ -39,7 +40,7 @@ st.set_page_config(page_title="MITS Backtester", page_icon=str(LOGO), layout="wi
 st.logo(str(LOGO), size="large")
 
 
-# ---------- Cached helpers (so moving a slider doesn't redo slow work) ----------
+# ---------- Remembered results, so moving a slider doesn't redo slow work ----------
 
 @st.cache_data(ttl=3600, show_spinner="Downloading prices from Yahoo Finance...")
 def cached_download(ticker, start):
@@ -63,26 +64,26 @@ def cached_comparison(prices, cost, capital):
 
 
 def show(fig):
-    """Display a matplotlib figure, then free its memory."""
+    """Put a chart on the page, then free up the memory it used."""
     st.pyplot(fig)
     plt.close(fig)
 
 
 def format_value(metric, value):
-    """Ratios as plain numbers, everything else as a percentage."""
+    """Show ratios like Sharpe as plain numbers, and everything else as a percentage."""
     if isinstance(value, float) and math.isnan(value):
         return "n/a"
-    if abs(value) < 1e-12:   # tiny rounding errors would otherwise show as "-0.00%"
+    if abs(value) < 1e-12:   # otherwise a tiny rounding error shows up as "-0.00%"
         value = 0.0
     return f"{value:.2f}" if metric in RATIO_METRICS else f"{value:.2%}"
 
 
 def format_table(table):
-    """Format a table whose COLUMNS are metric names."""
+    """Format every number in a table. The table's columns should be metric names."""
     return table.apply(lambda col: col.map(lambda v: format_value(col.name, v)))
 
 
-# ---------- Sidebar: all the controls ----------
+# ---------- The sidebar, where all the settings live ----------
 
 st.sidebar.title("Set up your test")
 
@@ -129,7 +130,7 @@ elif strategy_key == "vol_target":
         "window": st.sidebar.slider("Measure risk over (days)", 5, 100, 20),
     }
 else:
-    settings = {}   # a newly added strategy without sliders yet: use its default settings
+    settings = {}   # a new strategy that doesn't have sliders yet just uses its defaults
 
 st.sidebar.subheader("Fine print")
 cost_bps = st.sidebar.number_input("Cost per trade (basis points)", 0.0, 100.0, 5.0, step=1.0,
@@ -183,7 +184,7 @@ try:
         name = "Sample data (made-up prices)"
 
     signals = strategy["function"](prices, **settings)
-except Exception as error:  # show any data problem as a friendly message
+except Exception as error:  # show a readable message instead of a crash
     st.error(f"Couldn't run the test: {error}")
     if source == "Look up a ticker":
         st.caption("Check the ticker's spelling. Yahoo also blocks downloads now and then for a few "
@@ -197,7 +198,7 @@ strategy_metrics = compute_metrics(results["Strategy_Equity"], benchmark_equity=
 buy_hold_metrics = compute_metrics(buy_hold_equity, benchmark_equity=buy_hold_equity)
 
 
-# ---------- Headline numbers ----------
+# ---------- The four big numbers at the top ----------
 
 st.subheader(f"{name}: {strategy['label']}, "
              f"{results.index[0]:%b %Y} to {results.index[-1]:%b %Y}")
@@ -218,7 +219,7 @@ tab_backtest, tab_leaderboard, tab_mc, tab_sweep, tab_about = st.tabs(
 )
 
 
-# ---------- Tab: the backtest ----------
+# ---------- Results tab ----------
 
 with tab_backtest:
     table = pd.DataFrame({"Strategy": strategy_metrics, "Buy & Hold": buy_hold_metrics})
@@ -234,7 +235,7 @@ with tab_backtest:
     show(plot_price_and_signals(signals, results, title=f"What {strategy['label'].lower()} did"))
 
 
-# ---------- Tab: strategy leaderboard ----------
+# ---------- Compare strategies tab ----------
 
 with tab_leaderboard:
     st.write("Here's every strategy, each with its default settings, over exactly the same "
@@ -253,7 +254,7 @@ with tab_leaderboard:
         show(plot_strategy_comparison(curves, title=f"Growth of ${capital:,.0f} by strategy (log scale)"))
 
 
-# ---------- Tab: Monte Carlo ----------
+# ---------- What could happen tab (Monte Carlo) ----------
 
 with tab_mc:
     st.write("History only happened once, and a different order of good and bad years could "
@@ -284,7 +285,7 @@ with tab_mc:
                "still work in a totally different kind of market.")
 
 
-# ---------- Tab: parameter sweep ----------
+# ---------- Luck check tab (parameter sweep) ----------
 
 with tab_sweep:
     st.write("Maybe 50 and 200 just happened to work. To check, this tries 29 different pairs "
@@ -309,7 +310,7 @@ with tab_sweep:
                                 title="Sharpe ratio for each pair (outlined = your settings)"))
 
 
-# ---------- Tab: explanations ----------
+# ---------- How it works tab ----------
 
 with tab_about:
     st.markdown("""

@@ -1,6 +1,6 @@
 """Download daily price data from Yahoo Finance into a CSV the backtester can read.
 
-Requires the optional `yfinance` package (included in requirements.txt).
+This uses the `yfinance` package, which is in requirements.txt.
 
 Usage:
     python scripts/download_data.py SPY
@@ -23,13 +23,13 @@ def main():
     args = parser.parse_args()
 
     ticker = args.ticker.upper()
-    # auto_adjust=False keeps both "Close" and "Adj Close", matching Yahoo's CSV format.
+    # auto_adjust=False keeps both Close and Adj Close, the same as Yahoo's own CSV files.
     df = yf.Ticker(ticker).history(start=args.start, end=args.end, auto_adjust=False)
     if df.empty:
         raise SystemExit(f"No data returned for {ticker}. Check the symbol and dates.")
 
     df = df[COLUMNS]
-    df.index = df.index.tz_localize(None)  # drop the timezone so dates are plain YYYY-MM-DD
+    df.index = df.index.tz_localize(None)  # drop the timezone so the dates are plain YYYY-MM-DD
     df.index.name = "Date"
 
     out_path = Path(__file__).resolve().parent.parent / "data" / f"{ticker}.csv"
