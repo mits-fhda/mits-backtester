@@ -33,8 +33,10 @@ from mits_backtester.strategies import STRATEGIES
 from mits_backtester.sweep import parameter_sweep
 
 SAMPLE_CSV = Path(__file__).parent / "data" / "sample.csv"
+LOGO = Path(__file__).parent / "docs" / "images" / "mits-logo.png"
 
-st.set_page_config(page_title="MITS Backtester", layout="wide")
+st.set_page_config(page_title="MITS Backtester", page_icon=str(LOGO), layout="wide")
+st.logo(str(LOGO), size="large")
 
 
 # ---------- Cached helpers (so moving a slider doesn't redo slow work) ----------
@@ -113,12 +115,14 @@ elif strategy_key == "mean_reversion":
         "window": st.sidebar.slider("Window (days)", 5, 100, 20),
         "entry_z": st.sidebar.slider("Buy below z-score", -3.0, -0.25, -1.0, step=0.25),
     }
-else:
+elif strategy_key == "vol_target":
     settings = {
         "target_vol": st.sidebar.slider("Target volatility", 0.05, 0.40, 0.15, step=0.01,
                                         format="%.2f", help="0.15 = 15% per year"),
         "window": st.sidebar.slider("Volatility window (days)", 5, 100, 20),
     }
+else:
+    settings = {}   # a newly added strategy without sliders yet: use its default settings
 
 cost_bps = st.sidebar.number_input("Trading cost per trade (basis points)", 0.0, 100.0, 5.0, step=1.0,
                                    help="1 basis point = 0.01%. Covers commissions, spreads and slippage.")
@@ -296,6 +300,6 @@ couldn't have known about in advance.
 | Beta | cov(strategy, market) / var(market) | How much it moves with the market |
 | Alpha | (mean − beta × market mean) × 252 | Yearly return not explained by the market |
 
-Source code and tests: [github.com/mamoonrkhan/mits-backtester](https://github.com/mamoonrkhan/mits-backtester).
+Source code and tests: [github.com/mits-fhda/mits-backtester](https://github.com/mits-fhda/mits-backtester).
 Educational project, not investment advice.
 """)

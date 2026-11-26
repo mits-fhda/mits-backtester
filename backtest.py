@@ -79,7 +79,8 @@ def strategy_settings(args):
         "mean_reversion": {"window": args.window, "entry_z": args.entry_z},
         "vol_target": {"target_vol": args.target_vol, "window": args.vol_window},
     }
-    return settings[args.strategy]
+    # A newly added strategy without its own options yet runs with its default settings.
+    return settings.get(args.strategy, {})
 
 
 def format_metric(name, value):

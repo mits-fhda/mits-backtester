@@ -1,6 +1,8 @@
+<img src="docs/images/mits-logo.png" alt="MITS logo" width="96" align="right">
+
 # MITS Backtester
 
-[![tests](https://github.com/mamoonrkhan/mits-backtester/actions/workflows/tests.yml/badge.svg)](https://github.com/mamoonrkhan/mits-backtester/actions/workflows/tests.yml)
+[![tests](https://github.com/mits-fhda/mits-backtester/actions/workflows/tests.yml/badge.svg)](https://github.com/mits-fhda/mits-backtester/actions/workflows/tests.yml)
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://mits-backtester.streamlit.app/)
 
 A small, readable Python tool for **backtesting** trading strategies, built for the
@@ -169,7 +171,7 @@ in [`tests/test_backtest.py`](tests/test_backtest.py) checks this rule.
 Requires Python 3.10 or newer.
 
 ```bash
-git clone https://github.com/mamoonrkhan/mits-backtester.git
+git clone https://github.com/mits-fhda/mits-backtester.git
 cd mits-backtester
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
@@ -292,6 +294,12 @@ The backtester makes some simplifying assumptions:
 ## Disclaimer
 
 Educational project. This is not investment advice.
+
+## Contributing
+
+Club members are welcome to add strategies, metrics or charts. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for a step-by-step guide, and use
+[Discussions](https://github.com/mits-fhda/mits-backtester/discussions) for questions and ideas.
 
 ## License
 
