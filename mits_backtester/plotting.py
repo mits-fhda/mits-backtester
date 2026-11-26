@@ -1,4 +1,8 @@
-"""Charts for a backtest, saved as PNG files."""
+"""Charts for a backtest.
+
+Each chart function builds and returns a matplotlib Figure (so the web app can
+show it), and also saves it as a PNG when given a `path` (for the command line).
+"""
 
 from pathlib import Path
 
@@ -6,8 +10,8 @@ import matplotlib
 
 matplotlib.use("Agg")  # draw straight to files; no window needed (works on servers too)
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter
 import numpy as np
+from matplotlib.ticker import FuncFormatter
 
 # One small, consistent color scheme for every chart.
 SURFACE = "#fcfcfb"
@@ -34,6 +38,14 @@ def _style_axes(ax):
     ax.tick_params(colors=MUTED_TEXT, labelsize=9)
 
 
+def _finish(fig, path):
+    """Tidy the layout, save to `path` if one was given, and return the figure."""
+    fig.tight_layout()
+    if path is not None:
+        fig.savefig(path, dpi=150, facecolor=SURFACE)
+    return fig
+
+
 def _label_line_end(ax, series, text, color):
     """Write a label just to the right of the last point of a line."""
     ax.annotate(
@@ -48,7 +60,7 @@ def _label_line_end(ax, series, text, color):
     )
 
 
-def plot_price_and_signals(signals, results, short_window, long_window, title, path):
+def plot_price_and_signals(signals, results, short_window, long_window, title, path=None):
     """Chart (a): price with both moving averages; shaded areas = strategy holds the stock."""
     fig, ax = plt.subplots(figsize=(11, 5.5), facecolor=SURFACE)
     _style_axes(ax)
@@ -67,12 +79,10 @@ def plot_price_and_signals(signals, results, short_window, long_window, title, p
     ax.set_ylabel("Price ($)", color=MUTED_TEXT)
     ax.legend(loc="upper left", frameon=False, fontsize=9, labelcolor=TEXT)
 
-    fig.tight_layout()
-    fig.savefig(path, dpi=150, facecolor=SURFACE)
-    plt.close(fig)
+    return _finish(fig, path)
 
 
-def plot_equity_curves(results, initial_capital, title, path):
+def plot_equity_curves(results, initial_capital, title, path=None):
     """Chart (b): growth of the starting capital, strategy vs. buy-and-hold."""
     fig, ax = plt.subplots(figsize=(11, 5.5), facecolor=SURFACE)
     _style_axes(ax)
@@ -91,9 +101,7 @@ def plot_equity_curves(results, initial_capital, title, path):
     ax.legend(loc="upper left", frameon=False, fontsize=9, labelcolor=TEXT)
     ax.margins(x=0.08)  # room on the right for the end labels
 
-    fig.tight_layout()
-    fig.savefig(path, dpi=150, facecolor=SURFACE)
-    plt.close(fig)
+    return _finish(fig, path)
 
 
 def plot_results(signals, results, short_window, long_window, initial_capital,
@@ -105,20 +113,22 @@ def plot_results(signals, results, short_window, long_window, initial_capital,
     price_path = output_dir / f"{name}_price_moving_averages.png"
     equity_path = output_dir / f"{name}_equity_curve.png"
 
-    plot_price_and_signals(
+    price_fig = plot_price_and_signals(
         signals, results, short_window, long_window,
         title=f"{name}: price with {short_window}/{long_window}-day moving averages",
         path=price_path,
     )
-    plot_equity_curves(
+    equity_fig = plot_equity_curves(
         results, initial_capital,
         title=f"{name}: growth of ${initial_capital:,.0f}, strategy vs. buy and hold",
         path=equity_path,
     )
+    plt.close(price_fig)   # free the memory once the files are saved
+    plt.close(equity_fig)
     return price_path, equity_path
 
 
-def plot_monte_carlo_paths(simulations, initial_capital, years, title, path):
+def plot_monte_carlo_paths(simulations, initial_capital, years, title, path=None):
     """Fan chart: the range of simulated outcomes over time for each strategy.
 
     Dark band = middle 50% of paths (25th-75th percentile),
@@ -149,12 +159,10 @@ def plot_monte_carlo_paths(simulations, initial_capital, years, title, path):
 
     axes[0].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"${value:,.0f}"))
     fig.suptitle(title, x=0.01, ha="left", fontsize=13, color=TEXT)
-    fig.tight_layout()
-    fig.savefig(path, dpi=150, facecolor=SURFACE)
-    plt.close(fig)
+    return _finish(fig, path)
 
 
-def plot_monte_carlo_drawdowns(simulations, title, path):
+def plot_monte_carlo_drawdowns(simulations, title, path=None):
     """Histogram of each simulated path's worst drawdown."""
 
     fig, ax = plt.subplots(figsize=(11, 5), facecolor=SURFACE)
@@ -178,9 +186,7 @@ def plot_monte_carlo_drawdowns(simulations, title, path):
     ax.set_title(title, loc="left", fontsize=13, color=TEXT, pad=12)
     ax.legend(loc="upper left", frameon=False, fontsize=9, labelcolor=TEXT)
 
-    fig.tight_layout()
-    fig.savefig(path, dpi=150, facecolor=SURFACE)
-    plt.close(fig)
+    return _finish(fig, path)
 
 
 def plot_monte_carlo(simulations, initial_capital, years, num_paths,
@@ -192,14 +198,70 @@ def plot_monte_carlo(simulations, initial_capital, years, num_paths,
     paths_path = output_dir / f"{name}_monte_carlo_paths.png"
     drawdowns_path = output_dir / f"{name}_monte_carlo_drawdowns.png"
 
-    plot_monte_carlo_paths(
+    paths_fig = plot_monte_carlo_paths(
         simulations, initial_capital, years,
         title=f"{name}: {num_paths:,} simulated {years}-year paths for ${initial_capital:,.0f}",
         path=paths_path,
     )
-    plot_monte_carlo_drawdowns(
+    drawdowns_fig = plot_monte_carlo_drawdowns(
         simulations,
         title=f"{name}: distribution of max drawdowns across {num_paths:,} simulations",
         path=drawdowns_path,
     )
+    plt.close(paths_fig)
+    plt.close(drawdowns_fig)
     return paths_path, drawdowns_path
+
+
+def plot_sweep_heatmap(sweep_table, buy_hold_sharpe, highlight=None, title="", path=None):
+    """Grid of Sharpe ratios for every (short, long) window pair.
+
+    Color shows how each pair compares with buy-and-hold's Sharpe ratio:
+    blue = better, orange = worse, gray = about the same. The number in each
+    cell is the Sharpe ratio itself. `highlight` = (short, long) to outline.
+    """
+    from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
+    from matplotlib.patches import Rectangle
+
+    grid = sweep_table.pivot(index="Short", columns="Long", values="Sharpe Ratio")
+    difference = grid - buy_hold_sharpe
+
+    colormap = LinearSegmentedColormap.from_list(
+        "worse_same_better", [BUYHOLD_COLOR, "#e9e8e4", STRATEGY_COLOR]
+    )
+    spread = max(abs(difference.min().min()), abs(difference.max().max()), 0.05)
+    norm = TwoSlopeNorm(vcenter=0, vmin=-spread, vmax=spread)
+
+    fig, ax = plt.subplots(figsize=(8, 5.5), facecolor=SURFACE)
+    ax.set_facecolor(SURFACE)
+    image = ax.imshow(difference.to_numpy(), cmap=colormap, norm=norm, aspect="auto")
+
+    # Write the Sharpe ratio in every cell (blank where short >= long).
+    for row, short in enumerate(grid.index):
+        for col, long in enumerate(grid.columns):
+            value = grid.loc[short, long]
+            if np.isnan(value):
+                continue
+            strong = abs(difference.loc[short, long]) > spread * 0.6
+            ax.text(col, row, f"{value:.2f}", ha="center", va="center", fontsize=10,
+                    color="white" if strong else TEXT)
+
+    if highlight in [(s, l) for s in grid.index for l in grid.columns]:
+        row, col = list(grid.index).index(highlight[0]), list(grid.columns).index(highlight[1])
+        ax.add_patch(Rectangle((col - 0.5, row - 0.5), 1, 1, fill=False, ec=TEXT, lw=2.5))
+
+    ax.set_xticks(range(len(grid.columns)), labels=grid.columns)
+    ax.set_yticks(range(len(grid.index)), labels=grid.index)
+    ax.set_xlabel("Long window (days)", color=MUTED_TEXT)
+    ax.set_ylabel("Short window (days)", color=MUTED_TEXT)
+    ax.tick_params(colors=MUTED_TEXT, length=0)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    colorbar = fig.colorbar(image, ax=ax, shrink=0.85)
+    colorbar.set_label(f"Sharpe minus buy & hold ({buy_hold_sharpe:.2f})", color=MUTED_TEXT)
+    colorbar.outline.set_visible(False)
+    colorbar.ax.tick_params(colors=MUTED_TEXT, labelsize=8)
+
+    ax.set_title(title, loc="left", fontsize=12, color=TEXT, pad=12)
+    return _finish(fig, path)
