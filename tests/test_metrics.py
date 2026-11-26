@@ -7,11 +7,16 @@ import pytest
 
 from mits_backtester.metrics import (
     annualized_volatility,
+    beta_and_alpha,
     cagr,
+    calmar_ratio,
     compute_metrics,
+    conditional_value_at_risk,
     max_drawdown,
     sharpe_ratio,
+    sortino_ratio,
     total_return,
+    value_at_risk,
 )
 
 
@@ -83,4 +88,53 @@ def test_compute_metrics_has_all_keys():
     metrics = compute_metrics(pd.Series([100, 105, 102, 110]))
     assert set(metrics) == {
         "Total Return", "CAGR", "Max Drawdown", "Annualized Volatility", "Sharpe Ratio",
+        "Sortino Ratio", "Calmar Ratio", "Daily VaR (95%)", "Daily CVaR (95%)",
     }
+
+
+def test_compute_metrics_adds_beta_and_alpha_with_a_benchmark():
+    equity = pd.Series([100, 105, 102, 110])
+    metrics = compute_metrics(equity, benchmark_equity=equity)
+    assert metrics["Beta"] == pytest.approx(1.0)   # identical to the benchmark
+    assert metrics["Alpha"] == pytest.approx(0.0)
+
+
+def test_sortino_ratio():
+    # Daily returns: +2%, -1%, +2%, -1%. Mean = 0.5%.
+    # Downside deviation = sqrt(mean([0, 0.0001, 0, 0.0001])) = sqrt(0.00005).
+    equity = pd.Series([100, 102, 100.98, 103.0, 101.97])
+    expected = 0.005 / math.sqrt(0.00005) * math.sqrt(252)
+    assert sortino_ratio(equity) == pytest.approx(expected, rel=1e-3)
+
+
+def test_calmar_ratio():
+    # 2 steps, 1 per "year": CAGR = 10% (100 -> 121). Max drawdown: 110 -> 99 = -10%.
+    equity = pd.Series([100, 110, 99, 121])
+    expected = cagr(equity, periods_per_year=1)
+    assert calmar_ratio(equity, periods_per_year=1) == pytest.approx(expected / 0.10)
+
+
+def test_value_at_risk_and_cvar():
+    # 20 daily returns: nineteen days of +1%, one day of -10%.
+    # 95% VaR = the 5th percentile of returns; with linear interpolation it sits
+    # between -10% and +1%. CVaR = average of returns at or below VaR = -10%.
+    returns = [0.01] * 19 + [-0.10]
+    equity = pd.Series([100.0])
+    for r in returns:
+        equity.loc[len(equity)] = equity.iloc[-1] * (1 + r)
+    var = value_at_risk(equity)
+    assert -0.10 < var < 0.01
+    assert conditional_value_at_risk(equity) == pytest.approx(-0.10)
+
+
+def test_beta_of_a_half_invested_portfolio():
+    # A portfolio that always earns exactly half the market's daily return has beta 0.5.
+    market_returns = [0.02, -0.01, 0.03, -0.02, 0.01]
+    market = pd.Series([100.0])
+    half = pd.Series([100.0])
+    for r in market_returns:
+        market.loc[len(market)] = market.iloc[-1] * (1 + r)
+        half.loc[len(half)] = half.iloc[-1] * (1 + r / 2)
+    beta, alpha = beta_and_alpha(half, market)
+    assert beta == pytest.approx(0.5)
+    assert alpha == pytest.approx(0.0, abs=1e-12)

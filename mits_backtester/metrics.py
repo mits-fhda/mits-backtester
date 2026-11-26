@@ -71,12 +71,86 @@ def sharpe_ratio(equity, risk_free_rate=0.0, periods_per_year=TRADING_DAYS_PER_Y
     return excess.mean() / std * math.sqrt(periods_per_year)
 
 
-def compute_metrics(equity):
-    """All the metrics for one equity curve, as a dictionary."""
-    return {
+def sortino_ratio(equity, periods_per_year=TRADING_DAYS_PER_YEAR):
+    """Like Sharpe, but only counts DOWNSIDE volatility as risk.
+
+        downside deviation = sqrt(mean(min(daily return, 0) ** 2))
+        Sortino = mean(daily return) / downside deviation * sqrt(252)
+
+    Investors don't mind big UP days, so this punishes only the bad bumps.
+    """
+    returns = daily_returns(equity)
+    downside_deviation = math.sqrt((returns.clip(upper=0) ** 2).mean())
+    if downside_deviation == 0:
+        return float("nan")
+    return returns.mean() / downside_deviation * math.sqrt(periods_per_year)
+
+
+def calmar_ratio(equity, periods_per_year=TRADING_DAYS_PER_YEAR):
+    """Yearly return per unit of worst-case pain: CAGR / |max drawdown|."""
+    drawdown = max_drawdown(equity)
+    if drawdown == 0:
+        return float("nan")
+    return cagr(equity, periods_per_year) / abs(drawdown)
+
+
+def value_at_risk(equity, confidence=0.95):
+    """1-day historical Value-at-Risk (VaR), as a negative number.
+
+    "On 95% of days, we lost less than this." It is simply the 5th percentile
+    of all the daily returns. E.g. -0.02 means a 1-in-20 bad day loses 2%+.
+    """
+    return daily_returns(equity).quantile(1 - confidence)
+
+
+def conditional_value_at_risk(equity, confidence=0.95):
+    """CVaR, also called Expected Shortfall: the AVERAGE loss on the worst 5% of days.
+
+    VaR tells you where the bad tail starts; CVaR tells you how bad it gets
+    once you're in it, which is why regulators now prefer it.
+    """
+    returns = daily_returns(equity)
+    var = returns.quantile(1 - confidence)
+    return returns[returns <= var].mean()
+
+
+def beta_and_alpha(equity, benchmark_equity, periods_per_year=TRADING_DAYS_PER_YEAR):
+    """How much of the strategy is just the market (beta), and what's left (alpha).
+
+        beta  = covariance(strategy, market) / variance(market)
+        alpha = (mean strategy return - beta * mean market return) * 252
+
+    Beta 0.5 means the strategy tends to move half as much as the market.
+    Alpha is the yearly return NOT explained by riding the market: the part
+    a quant fund gets paid for. (Simple version, 0% risk-free rate.)
+    """
+    returns = daily_returns(equity)
+    market = daily_returns(benchmark_equity)
+    beta = returns.cov(market) / market.var()
+    alpha = (returns.mean() - beta * market.mean()) * periods_per_year
+    return beta, alpha
+
+
+# Metrics shown as plain numbers; every other metric is shown as a percentage.
+RATIO_METRICS = {"Sharpe Ratio", "Sortino Ratio", "Calmar Ratio", "Beta"}
+
+
+def compute_metrics(equity, benchmark_equity=None):
+    """All the metrics for one equity curve, as a dictionary.
+
+    Pass `benchmark_equity` (e.g. buy-and-hold) to also get beta and alpha.
+    """
+    metrics = {
         "Total Return": total_return(equity),
         "CAGR": cagr(equity),
         "Max Drawdown": max_drawdown(equity),
         "Annualized Volatility": annualized_volatility(equity),
         "Sharpe Ratio": sharpe_ratio(equity),
+        "Sortino Ratio": sortino_ratio(equity),
+        "Calmar Ratio": calmar_ratio(equity),
+        "Daily VaR (95%)": value_at_risk(equity),
+        "Daily CVaR (95%)": conditional_value_at_risk(equity),
     }
+    if benchmark_equity is not None:
+        metrics["Beta"], metrics["Alpha"] = beta_and_alpha(equity, benchmark_equity)
+    return metrics
