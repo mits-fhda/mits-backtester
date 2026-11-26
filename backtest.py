@@ -3,18 +3,22 @@
 Example:
     python backtest.py --csv data/SPY.csv --short 50 --long 200
     python backtest.py --csv data/SPY.csv --cost-bps 5 --monte-carlo 1000
+    python backtest.py --csv data/SPY.csv --sweep
 """
 
 import argparse
 import math
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+
 from mits_backtester.data import load_data
 from mits_backtester.engine import count_trades, run_backtest, time_in_market
 from mits_backtester.metrics import compute_metrics
 from mits_backtester.montecarlo import run_monte_carlo, summarize_monte_carlo
-from mits_backtester.plotting import plot_monte_carlo, plot_results
+from mits_backtester.plotting import plot_monte_carlo, plot_results, plot_sweep_heatmap
 from mits_backtester.strategies import compute_signals
+from mits_backtester.sweep import parameter_sweep
 
 
 def parse_args():
@@ -28,6 +32,9 @@ def parse_args():
     parser.add_argument("--output-dir", default="output", help="Folder for the PNG charts (default: output)")
     parser.add_argument("--cost-bps", type=float, default=0.0,
                         help="Trading cost per buy or sell, in basis points (1 bp = 0.01%%; default: 0)")
+
+    parser.add_argument("--sweep", action="store_true",
+                        help="Also test a grid of short/long windows and save a Sharpe-ratio heatmap")
 
     mc = parser.add_argument_group("Monte Carlo risk simulation")
     mc.add_argument("--monte-carlo", type=int, default=0, metavar="PATHS",
@@ -85,6 +92,32 @@ def print_monte_carlo_report(summary, num_paths, years, block_size):
           f"{summary['Chance Strategy Beats Buy & Hold'] * 100:.1f}%\n")
 
 
+def run_sweep(prices, args, name):
+    """Run the parameter sweep, print the top results, save the heatmap."""
+    try:
+        table, buy_hold = parameter_sweep(prices, cost_per_trade=args.cost_bps / 10_000)
+    except (IndexError, ValueError):
+        raise SystemExit("Error: not enough data for the parameter sweep (needs > 300 days)")
+
+    start = prices.index[table["Long"].max() - 1].date()
+    print(f"Parameter sweep: {len(table)} window pairs, all scored from {start}")
+    print(f"Buy & hold Sharpe over the same dates: {buy_hold['Sharpe Ratio']:.2f}")
+    beat = (table["Sharpe Ratio"] > buy_hold["Sharpe Ratio"]).sum()
+    print(f"Pairs with a higher Sharpe than buy & hold: {beat} of {len(table)}\n")
+    top = table.sort_values("Sharpe Ratio", ascending=False).head(5)
+    print(top[["Short", "Long", "CAGR", "Max Drawdown", "Sharpe Ratio"]]
+          .to_string(index=False, float_format=lambda x: f"{x:.3f}"))
+    print()
+
+    path = Path(args.output_dir) / f"{name}_parameter_sweep.png"
+    fig = plot_sweep_heatmap(
+        table, buy_hold["Sharpe Ratio"], highlight=(args.short, args.long),
+        title=f"{name}: Sharpe ratio for each moving-average window pair", path=path,
+    )
+    plt.close(fig)
+    return path
+
+
 def main():
     args = parse_args()
     name = Path(args.csv).stem  # "data/SPY.csv" -> "SPY"
@@ -123,6 +156,9 @@ def main():
             simulations, args.capital, args.mc_years, args.monte_carlo,
             name=name, output_dir=args.output_dir,
         )
+
+    if args.sweep:
+        chart_paths += (run_sweep(prices, args, name),)
 
     for path in chart_paths:
         print(f"Saved chart: {path}")
