@@ -52,8 +52,8 @@ def test_moving_average_signal():
     # Prices rise steadily, so the 2-day average stays above the 3-day average.
     prices = make_signals([1, 2, 3, 4, 5], [0] * 5)[["Price"]]
     signals = compute_signals(prices, short_window=2, long_window=3)
-    assert signals["SMA_short"].iloc[-1] == pytest.approx(4.5)   # (4 + 5) / 2
-    assert signals["SMA_long"].iloc[-1] == pytest.approx(4.0)    # (3 + 4 + 5) / 3
+    assert signals["Line: 2-day average"].iloc[-1] == pytest.approx(4.5)   # (4 + 5) / 2
+    assert signals["Line: 3-day average"].iloc[-1] == pytest.approx(4.0)    # (3 + 4 + 5) / 3
     assert signals["Signal"].isna().sum() == 2                    # first 2 days: warm-up
     assert list(signals["Signal"].dropna()) == [1, 1, 1]
 

@@ -31,3 +31,13 @@ def test_app_shows_error_when_short_window_too_long():
     app.run()
     assert not app.exception
     assert "smaller than the long window" in app.error[0].value
+
+
+@pytest.mark.parametrize("strategy", ["sma", "momentum", "mean_reversion", "vol_target"])
+def test_app_runs_every_strategy(strategy):
+    app = AppTest.from_file(APP_PATH, default_timeout=60)
+    app.session_state["source"] = "Sample data"
+    app.session_state["strategy"] = strategy
+    app.run()
+    assert not app.exception
+    assert not app.error

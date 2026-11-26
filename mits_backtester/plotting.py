@@ -19,11 +19,11 @@ TEXT = "#0b0b0b"
 MUTED_TEXT = "#52514e"
 GRID = "#e4e3df"
 PRICE_COLOR = "#8a8984"
-SHORT_COLOR = "#2a78d6"     # blue
-LONG_COLOR = "#eb6834"      # orange
 STRATEGY_COLOR = "#2a78d6"  # blue
 BUYHOLD_COLOR = "#eb6834"   # orange
 IN_MARKET_FILL = "#2a78d6"
+LINE_COLORS = ["#2a78d6", "#eb6834", "#1baf7a"]           # blue, orange, aqua (fixed order)
+COMPARISON_COLORS = ["#2a78d6", "#1baf7a", "#6250d6", "#e87ba4"]  # one per strategy
 
 
 def _style_axes(ax):
@@ -60,24 +60,34 @@ def _label_line_end(ax, series, text, color):
     )
 
 
-def plot_price_and_signals(signals, results, short_window, long_window, title, path=None):
-    """Chart (a): price with both moving averages; shaded areas = strategy holds the stock."""
-    fig, ax = plt.subplots(figsize=(11, 5.5), facecolor=SURFACE)
+def plot_price_and_signals(signals, results, title, path=None):
+    """Chart (a): price with the strategy's indicator lines, plus how invested it was.
+
+    Top panel: price and every "Line: ..." column the strategy added.
+    Bottom panel: the strategy's position each day (0% = cash, 100% = all in).
+    """
+    fig, (ax, ax_position) = plt.subplots(
+        2, 1, figsize=(11, 6.5), sharex=True, facecolor=SURFACE,
+        gridspec_kw={"height_ratios": [3, 1]},
+    )
     _style_axes(ax)
+    _style_axes(ax_position)
 
     ax.plot(signals.index, signals["Price"], color=PRICE_COLOR, lw=1.2, label="Price")
-    ax.plot(signals.index, signals["SMA_short"], color=SHORT_COLOR, lw=2,
-            label=f"{short_window}-day average")
-    ax.plot(signals.index, signals["SMA_long"], color=LONG_COLOR, lw=2,
-            label=f"{long_window}-day average")
-
-    in_market = results["Position"] == 1
-    ax.fill_between(results.index, 0, 1, where=in_market, transform=ax.get_xaxis_transform(),
-                    color=IN_MARKET_FILL, alpha=0.07, lw=0, label="Strategy holds the stock")
+    line_columns = [col for col in signals.columns if col.startswith("Line: ")]
+    for col, color in zip(line_columns, LINE_COLORS):
+        ax.plot(signals.index, signals[col], color=color, lw=1.8, label=col.removeprefix("Line: "))
 
     ax.set_title(title, loc="left", fontsize=13, color=TEXT, pad=12)
     ax.set_ylabel("Price ($)", color=MUTED_TEXT)
     ax.legend(loc="upper left", frameon=False, fontsize=9, labelcolor=TEXT)
+
+    position = results["Position"]
+    ax_position.fill_between(position.index, 0, position, step="post",
+                             color=IN_MARKET_FILL, alpha=0.35, lw=0)
+    ax_position.set_ylim(0, 1.05)
+    ax_position.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:.0%}"))
+    ax_position.set_ylabel("Invested", color=MUTED_TEXT)
 
     return _finish(fig, path)
 
@@ -104,23 +114,21 @@ def plot_equity_curves(results, initial_capital, title, path=None):
     return _finish(fig, path)
 
 
-def plot_results(signals, results, short_window, long_window, initial_capital,
+def plot_results(signals, results, initial_capital, strategy_label="Strategy",
                  name="Stock", output_dir="output"):
     """Create both charts and return the paths of the saved PNG files."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    price_path = output_dir / f"{name}_price_moving_averages.png"
+    price_path = output_dir / f"{name}_price_and_signals.png"
     equity_path = output_dir / f"{name}_equity_curve.png"
 
     price_fig = plot_price_and_signals(
-        signals, results, short_window, long_window,
-        title=f"{name}: price with {short_window}/{long_window}-day moving averages",
-        path=price_path,
+        signals, results, title=f"{name}: {strategy_label}", path=price_path,
     )
     equity_fig = plot_equity_curves(
         results, initial_capital,
-        title=f"{name}: growth of ${initial_capital:,.0f}, strategy vs. buy and hold",
+        title=f"{name}: growth of ${initial_capital:,.0f}, {strategy_label.lower()} vs. buy and hold",
         path=equity_path,
     )
     plt.close(price_fig)   # free the memory once the files are saved
@@ -264,4 +272,27 @@ def plot_sweep_heatmap(sweep_table, buy_hold_sharpe, highlight=None, title="", p
     colorbar.ax.tick_params(colors=MUTED_TEXT, labelsize=8)
 
     ax.set_title(title, loc="left", fontsize=12, color=TEXT, pad=12)
+    return _finish(fig, path)
+
+
+def plot_strategy_comparison(equity_curves, title, path=None):
+    """Growth of the same starting amount for every strategy and buy-and-hold.
+
+    `equity_curves` is a DataFrame with one column per strategy (same dates).
+    A log scale is used so equal percentage moves look equal in size.
+    """
+    fig, ax = plt.subplots(figsize=(11, 5.5), facecolor=SURFACE)
+    _style_axes(ax)
+
+    strategies = [col for col in equity_curves.columns if col != "Buy & Hold"]
+    for col, color in zip(strategies, COMPARISON_COLORS):
+        ax.plot(equity_curves.index, equity_curves[col], color=color, lw=1.8, label=col)
+    ax.plot(equity_curves.index, equity_curves["Buy & Hold"], color=BUYHOLD_COLOR, lw=2.2,
+            label="Buy & Hold")
+
+    ax.set_yscale("log")
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"${value:,.0f}"))
+    ax.yaxis.set_minor_formatter(FuncFormatter(lambda value, _: ""))
+    ax.set_title(title, loc="left", fontsize=13, color=TEXT, pad=12)
+    ax.legend(loc="upper left", frameon=False, fontsize=9, labelcolor=TEXT)
     return _finish(fig, path)
