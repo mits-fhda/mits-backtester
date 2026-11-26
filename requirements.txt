@@ -1,0 +1,10 @@
+# Core libraries the backtester needs
+pandas>=2.0
+numpy>=1.24
+matplotlib>=3.7
+
+# Testing
+pytest>=7.0
+
+# Optional: only needed for scripts/download_data.py
+yfinance>=0.2

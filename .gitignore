@@ -1,0 +1,21 @@
+# Python virtual environment
+.venv/
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Generated charts (re-create them by running the backtest)
+output/*
+!output/.gitkeep
+
+# Downloaded price data (keep only the small sample in the repo)
+data/*.csv
+!data/sample.csv
+
+# Editor / OS clutter
+.vscode/
+.idea/
+.DS_Store
