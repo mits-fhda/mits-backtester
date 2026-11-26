@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use("Agg")  # draw straight to files; no window needed (works on servers too)
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+import numpy as np
 
 # One small, consistent color scheme for every chart.
 SURFACE = "#fcfcfb"
@@ -115,3 +116,90 @@ def plot_results(signals, results, short_window, long_window, initial_capital,
         path=equity_path,
     )
     return price_path, equity_path
+
+
+def plot_monte_carlo_paths(simulations, initial_capital, years, title, path):
+    """Fan chart: the range of simulated outcomes over time for each strategy.
+
+    Dark band = middle 50% of paths (25th-75th percentile),
+    light band = middle 90% (5th-95th), line = median path.
+    """
+
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5), sharey=True, facecolor=SURFACE)
+    colors = {"Strategy": STRATEGY_COLOR, "Buy & Hold": BUYHOLD_COLOR}
+
+    for ax, (name, sim) in zip(axes, simulations.items()):
+        _style_axes(ax)
+        equity = sim["equity"]
+        x = np.linspace(0, years, equity.shape[1])
+        p5, p25, p50, p75, p95 = np.percentile(equity, [5, 25, 50, 75, 95], axis=0)
+        color = colors[name]
+
+        ax.fill_between(x, p5, p95, color=color, alpha=0.15, lw=0, label="5th–95th percentile")
+        ax.fill_between(x, p25, p75, color=color, alpha=0.30, lw=0, label="25th–75th percentile")
+        ax.plot(x, p50, color=color, lw=2, label="Median")
+        ax.axhline(initial_capital, color=MUTED_TEXT, lw=0.8, ls="--")
+
+        ax.annotate(f"${p50[-1]:,.0f}", xy=(x[-1], p50[-1]), xytext=(6, 0),
+                    textcoords="offset points", va="center", fontsize=9, color=TEXT)
+        ax.set_title(name, loc="left", fontsize=11, color=TEXT)
+        ax.set_xlabel("Years", color=MUTED_TEXT)
+        ax.set_xlim(0, years * 1.15)  # room on the right for the end label
+        ax.legend(loc="upper left", frameon=False, fontsize=8, labelcolor=TEXT)
+
+    axes[0].yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"${value:,.0f}"))
+    fig.suptitle(title, x=0.01, ha="left", fontsize=13, color=TEXT)
+    fig.tight_layout()
+    fig.savefig(path, dpi=150, facecolor=SURFACE)
+    plt.close(fig)
+
+
+def plot_monte_carlo_drawdowns(simulations, title, path):
+    """Histogram of each simulated path's worst drawdown."""
+
+    fig, ax = plt.subplots(figsize=(11, 5), facecolor=SURFACE)
+    _style_axes(ax)
+    colors = {"Strategy": STRATEGY_COLOR, "Buy & Hold": BUYHOLD_COLOR}
+
+    all_drawdowns = np.concatenate([sim["max_drawdown"] for sim in simulations.values()])
+    bins = np.linspace(all_drawdowns.min(), 0, 40)
+
+    for name, sim in simulations.items():
+        drawdowns = sim["max_drawdown"]
+        median = np.median(drawdowns)
+        ax.hist(drawdowns, bins=bins, histtype="stepfilled", alpha=0.25, color=colors[name])
+        ax.hist(drawdowns, bins=bins, histtype="step", lw=2, color=colors[name],
+                label=f"{name} (median {median:.0%})")
+        ax.axvline(median, color=colors[name], lw=1.5, ls="--")
+
+    ax.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:.0%}"))
+    ax.set_xlabel("Worst peak-to-trough drop in each simulated path", color=MUTED_TEXT)
+    ax.set_ylabel("Number of paths", color=MUTED_TEXT)
+    ax.set_title(title, loc="left", fontsize=13, color=TEXT, pad=12)
+    ax.legend(loc="upper left", frameon=False, fontsize=9, labelcolor=TEXT)
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=150, facecolor=SURFACE)
+    plt.close(fig)
+
+
+def plot_monte_carlo(simulations, initial_capital, years, num_paths,
+                     name="Stock", output_dir="output"):
+    """Create both Monte Carlo charts and return the paths of the saved PNG files."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    paths_path = output_dir / f"{name}_monte_carlo_paths.png"
+    drawdowns_path = output_dir / f"{name}_monte_carlo_drawdowns.png"
+
+    plot_monte_carlo_paths(
+        simulations, initial_capital, years,
+        title=f"{name}: {num_paths:,} simulated {years}-year paths for ${initial_capital:,.0f}",
+        path=paths_path,
+    )
+    plot_monte_carlo_drawdowns(
+        simulations,
+        title=f"{name}: distribution of max drawdowns across {num_paths:,} simulations",
+        path=drawdowns_path,
+    )
+    return paths_path, drawdowns_path
