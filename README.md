@@ -7,9 +7,11 @@ A small, readable Python tool for **backtesting** trading strategies, built for 
 Mathematical Investment and Trading Society (MITS). A backtest asks: *if I had followed
 this rule in the past, how would it have done?*
 
-It tests a classic **moving-average crossover** strategy, compares it with simply
-buying and holding the stock over the same period, and uses a **Monte Carlo
-simulation** to estimate the range of outcomes and drawdowns you could face going forward.
+It tests four classic quant strategies (trend following, momentum, mean reversion and
+volatility targeting) against simply buying and holding. It scores them with the risk
+metrics professional funds use (Sharpe, Sortino, VaR/CVaR, beta, alpha), and uses a **Monte
+Carlo simulation** to estimate the range of outcomes and drawdowns you could face going
+forward.
 A **parameter sweep** checks whether the result is robust or just lucky, and an
 **interactive web app** lets anyone try it on any ticker without touching the code.
 
@@ -33,8 +35,38 @@ avoided most of the 2008 crash, so its worst drawdown was much smaller and its
 return *per unit of risk* (Sharpe) was higher. This is typical of trend-following rules:
 they trade some return for a smoother ride.
 
-![Price with moving averages](docs/images/SPY_price_moving_averages.png)
+![Price with moving averages](docs/images/SPY_price_and_signals.png)
 ![Growth of $10,000](docs/images/SPY_equity_curve.png)
+
+## Strategy leaderboard
+
+`python backtest.py --csv data/SPY.csv --cost-bps 5 --compare`
+
+All four strategies with their default settings, on the same dates (1994–2026), sorted by
+Sharpe ratio:
+
+| Strategy | CAGR | Max DD | Volatility | Sharpe | Sortino | Beta | Alpha | Avg exposure |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Time-series momentum     | 10.31% | -33.7% | 14.8% | 0.74 | 1.04 | 0.62 | 3.58% | 82% |
+| Moving-average crossover |  9.59% | -33.7% | 13.9% | 0.73 | 1.03 | 0.55 | 3.67% | 77% |
+| Volatility targeting     |  8.77% | -45.6% | 13.4% | 0.70 | 0.97 | 0.65 | 1.61% | 88% |
+| Buy & Hold               | 10.54% | -55.2% | 18.8% | 0.63 | 0.89 | 1.00 | 0.00% | 100% |
+| Mean reversion           |  4.52% | -32.0% | 12.0% | 0.43 | 0.65 | 0.41 | 0.31% | 19% |
+
+**What it shows:**
+- The two trend-following strategies (momentum and the crossover) give up a little
+  return but cut the worst crash by about 20 percentage points.
+- Their **beta around 0.6** means they carry only about 60% of the market's risk, and
+  **alpha around 3.6% a year** is the return left over after accounting for that.
+- Mean reversion has the smallest drawdown but the lowest return. With these settings it's
+  invested only 19% of the time, so it misses most of the market's long-run growth.
+
+![Strategy comparison](docs/images/SPY_strategy_comparison.png)
+
+Volatility targeting is always invested but shrinks its position when markets get wild.
+In the panel below, you can see it cut exposure to under 25% in the 2008 and 2020 crashes:
+
+![Volatility targeting](docs/images/SPY_price_vol_target.png)
 
 ## Monte Carlo risk simulation
 
@@ -106,14 +138,18 @@ code. It calls the same tested functions as the command-line tool.
 "Create app", choose this repo and `app.py`, and deploy. You get a public link anyone can
 open.
 
-## How the strategy works
+## The strategies
 
-1. Compute the average closing price over the last **50** days (short) and the last
-   **200** days (long).
-2. If the short average is **above** the long one, the trend is up: **hold the stock**.
-3. Otherwise, **hold cash** (earning 0%).
+| `--strategy` | Rule | Idea behind it |
+|---|---|---|
+| `sma` (default) | Own the stock while its 50-day average is above its 200-day average | Ride long trends, step aside in downtrends |
+| `momentum` | Own it if the past 12 months' return (skipping the latest month) is positive | Winners tend to keep winning for a while; the skip avoids short-term reversals |
+| `mean_reversion` | Own it while the price is more than 1 standard deviation below its 20-day average | Sharp drops tend to partly bounce back |
+| `vol_target` | Always invested, sized as 15% ÷ recent volatility (max 100%) | Volatility clusters, so cutting size when it rises avoids the worst of crashes |
 
-Both window lengths can be changed from the command line.
+Every strategy is a function in [`strategies.py`](mits_backtester/strategies.py) that
+returns a `Signal` between 0 (all cash) and 1 (fully invested). Adding a new strategy
+means writing one function and adding one line to the `STRATEGIES` table.
 
 ### Avoiding look-ahead bias
 
@@ -161,8 +197,13 @@ least `Date` and `Close` columns. `Adj Close` is used when it is present.
 | Option         | Default  | Meaning                               |
 |----------------|----------|---------------------------------------|
 | `--csv`        | required | Path to the price CSV                 |
+| `--strategy`   | sma      | `sma`, `momentum`, `mean_reversion` or `vol_target` |
+| `--compare`    | off      | Run every strategy on the same dates and print a leaderboard |
 | `--short`      | 50       | Short moving-average window (days)    |
 | `--long`       | 200      | Long moving-average window (days)     |
+| `--lookback`, `--skip` | 252, 21 | Momentum: look-back period and recent days to ignore |
+| `--window`, `--entry-z` | 20, -1.0 | Mean reversion: average window and buy threshold |
+| `--target-vol`, `--vol-window` | 0.15, 20 | Volatility targeting: target and measurement window |
 | `--capital`    | 10000    | Starting amount in dollars            |
 | `--output-dir` | output   | Where the PNG charts are saved        |
 | `--cost-bps`   | 0        | Trading cost per buy/sell in basis points (5 = 0.05%) |
@@ -190,6 +231,12 @@ figures assume **252 trading days per year**.
 | **Max Drawdown** | `min(value / running peak - 1)` | The worst drop from a high point to a later low. It shows how much pain you'd have had to sit through. |
 | **Annualized Volatility** | `std(daily returns) × √252` | How much returns jump around. Higher means a bumpier ride. It's scaled by √252 because variance grows in proportion to time. |
 | **Sharpe Ratio** | `mean(daily returns) / std(daily returns) × √252` | Return earned per unit of volatility (with a 0% risk-free rate). Higher is better. It's useful for comparing strategies that take different amounts of risk. |
+| **Sortino Ratio** | `mean(daily returns) / downside deviation × √252` | Like Sharpe, but only *down* days count as risk. Nobody minds big up days. |
+| **Calmar Ratio** | `CAGR / \|max drawdown\|` | Yearly return per unit of worst-case pain. |
+| **Daily VaR (95%)** | 5th percentile of daily returns | Value-at-Risk: "on 19 days out of 20, we lose less than this." |
+| **Daily CVaR (95%)** | average of the worst 5% of days | Expected Shortfall: how bad the bad days get. Regulators now prefer it to VaR. |
+| **Beta** | `cov(strategy, market) / var(market)` | How much the strategy moves with the market (1 = exactly like it). |
+| **Alpha** | `(mean return − beta × market mean) × 252` | Yearly return *not* explained by market exposure. It's what quant funds are paid for. |
 
 ## Project structure
 
@@ -197,11 +244,12 @@ figures assume **252 trading days per year**.
 backtest.py               Command-line entry point
 mits_backtester/
     data.py               load_data(): read and clean the CSV
-    strategies.py         compute_signals(): the moving-average crossover
+    strategies.py         four strategies + the STRATEGIES registry
     engine.py             run_backtest(): signals -> daily returns -> equity curves
     metrics.py            compute_metrics() and the individual metric functions
     montecarlo.py         run_monte_carlo(): block-bootstrap risk simulation
     sweep.py              parameter_sweep(): test many window pairs on the same dates
+    compare.py            compare_strategies(): the strategy leaderboard
 app.py                    Streamlit web app (display only; reuses the functions above)
     plotting.py           plot_results(): saves the two PNG charts
 scripts/
@@ -231,14 +279,15 @@ The backtester makes some simplifying assumptions:
 ## Future work
 
 - ~~**Monte Carlo risk simulation**~~: done in v1.1 (see above).
-- **User-defined strategies:** choose or plug in strategies (e.g. RSI, momentum) from the
-  command line without editing the engine.
+- ~~**More strategies**~~: momentum, mean reversion and volatility targeting added in v1.3.
+  Next ideas: RSI, Bollinger breakouts, combining signals (e.g. trend + vol targeting).
 - **Multiple tickers:** backtest a portfolio of several stocks, or compare one strategy
   across many tickers at once.
 - ~~**Simple web interface**~~: done in v1.2 (`streamlit run app.py`).
 - **Out-of-sample testing:** choose windows on one period (e.g. 1994–2010) and check
   them on a later one (2011–today), a stricter guard against overfitting than the sweep.
-- A non-zero risk-free rate, so cash earns interest.
+- A non-zero risk-free rate, so cash earns interest (this affects Sharpe, Sortino and alpha).
+- **Short selling and leverage**, so strategies can bet on prices falling.
 
 ## Disclaimer
 
