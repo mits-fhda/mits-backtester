@@ -9,6 +9,8 @@ this rule in the past, how would it have done?*
 It tests a classic **moving-average crossover** strategy, compares it with simply
 buying and holding the stock over the same period, and uses a **Monte Carlo
 simulation** to estimate the range of outcomes and drawdowns you could face going forward.
+A **parameter sweep** checks whether the result is robust or just lucky, and an
+**interactive web app** lets anyone try it on any ticker without touching the code.
 
 ## Example: SPY, 1993–2026
 
@@ -69,6 +71,35 @@ are about a third as likely.
 daily returns. It does not re-run the moving-average rule on new simulated prices. So it
 measures how sensitive the results are to the *order* of good and bad periods, not
 whether the rule itself would keep working in a different kind of market.
+
+## Is 50/200 special, or just lucky?
+
+`python backtest.py --csv data/SPY.csv --cost-bps 5 --sweep`
+
+Picking the best-looking settings after the fact is the most common way backtests fool
+people (*overfitting*). The sweep tests 29 short/long window pairs over the same dates.
+**25 of 29 beat buy-and-hold's Sharpe ratio**, and the good results form a broad region
+instead of a single lucky cell. The only pairs that did worse all used a 100-day long window. So
+the trend-following effect looks robust on SPY, and 50/200 (outlined) isn't a cherry-picked
+outlier.
+
+![Parameter sweep](docs/images/SPY_parameter_sweep.png)
+
+## Interactive web app
+
+```bash
+streamlit run app.py
+```
+
+This opens a page in your browser where you can type any ticker, move sliders for the
+windows and trading cost, and see the backtest, Monte Carlo and parameter sweep update
+live. You can also upload your own CSV. The app ([`app.py`](app.py)) contains only display
+code. It calls the same tested functions as the command-line tool.
+
+**Share it with the club for free:** push to GitHub, sign in at
+[share.streamlit.io](https://share.streamlit.io) with your GitHub account, click
+"Create app", choose this repo and `app.py`, and deploy. You get a public link anyone can
+open.
 
 ## How the strategy works
 
@@ -134,6 +165,7 @@ least `Date` and `Close` columns. `Adj Close` is used when it is present.
 | `--mc-years`   | 10       | Length of each simulated path (years) |
 | `--block-size` | 20       | Days per resampled block (1 = independent days) |
 | `--seed`       | 42       | Random seed, so results are repeatable |
+| `--sweep`      | off      | Test 29 window pairs and save a Sharpe heatmap |
 
 Run the tests with:
 
@@ -164,6 +196,8 @@ mits_backtester/
     engine.py             run_backtest(): signals -> daily returns -> equity curves
     metrics.py            compute_metrics() and the individual metric functions
     montecarlo.py         run_monte_carlo(): block-bootstrap risk simulation
+    sweep.py              parameter_sweep(): test many window pairs on the same dates
+app.py                    Streamlit web app (display only; reuses the functions above)
     plotting.py           plot_results(): saves the two PNG charts
 scripts/
     download_data.py      Download prices from Yahoo Finance
@@ -196,10 +230,9 @@ The backtester makes some simplifying assumptions:
   command line without editing the engine.
 - **Multiple tickers:** backtest a portfolio of several stocks, or compare one strategy
   across many tickers at once.
-- **Simple web interface:** a page where club members can upload a CSV, set parameters,
-  and see the charts and metrics without using the terminal.
-- **Parameter robustness:** test a grid of short/long windows to see whether 50/200 is
-  special or just lucky (and guard against overfitting with out-of-sample testing).
+- ~~**Simple web interface**~~: done in v1.2 (`streamlit run app.py`).
+- **Out-of-sample testing:** choose windows on one period (e.g. 1994–2010) and check
+  them on a later one (2011–today), a stricter guard against overfitting than the sweep.
 - A non-zero risk-free rate, so cash earns interest.
 
 ## Disclaimer
