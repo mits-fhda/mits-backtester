@@ -1,57 +1,79 @@
-# Contributing to the MITS Backtester
+# Contributing
 
-Thanks for helping build the club's backtester! You don't need to be an expert.
-If you can write a Python function, you can add a strategy.
+So you want to add something to the backtester. Nice! You don't need to be a great
+programmer for this. Most contributions are a new strategy, and a strategy is just one
+Python function. This guide walks you through adding one from start to finish.
 
-## 1. Get the code running
+If you get stuck anywhere, post in
+[Discussions](https://github.com/mits-fhda/mits-backtester/discussions) or ask someone
+at a meeting. Nobody expects you to figure out git alone.
+
+## Getting set up
+
+First, get the code onto your computer and make sure it runs:
 
 ```bash
 git clone https://github.com/mits-fhda/mits-backtester.git
 cd mits-backtester
 python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # on Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-pytest                           # every test should pass before you change anything
+pytest
 ```
 
-Not a club org member yet? Ask an officer to invite you, or
-[fork the repo](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo)
-and work on your own copy.
+That last command runs the tests. They should all pass before you change anything, so
+if something fails here, it's a setup problem and not your fault. Ask for help.
 
-## 2. Make a branch
+You'll also want real data to try your strategy on:
 
 ```bash
-git checkout -b add-rsi-strategy
+python scripts/download_data.py SPY --start 1993-01-01
 ```
 
-## 3. Add a strategy (the most common contribution)
+If you aren't in the MITS GitHub organization yet, ask an officer for an invite. In the
+meantime you can [fork the repo](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo)
+and work on your own copy.
 
-Open [`mits_backtester/strategies.py`](mits_backtester/strategies.py). Every strategy
-is one function with the same contract:
+Before you start writing code, make a branch for your work so it stays separate from
+everyone else's:
 
-- **Input:** the price table (it has a `Price` column), plus your own settings.
-- **Output:** a copy of the table with a `Signal` column added:
-  `1` = fully invested, `0` = all cash, in between = partly invested, `NaN` = not enough
-  history yet.
-- **Optional:** columns named `"Line: something"` are drawn on the price chart.
+```bash
+git checkout -b add-my-strategy
+```
 
-Here's a template:
+## Writing a strategy
+
+All the strategies live in [`mits_backtester/strategies.py`](mits_backtester/strategies.py).
+Each one gets a table of daily prices and adds a `Signal` column that says how much of the
+stock to own on each day:
+
+- `1` means all in
+- `0` means all cash
+- something in between, like `0.6`, means partly invested
+- `NaN` means "not enough history to decide yet" (for example, the first few weeks of a
+  20-day average)
+
+Here's a simple example you can copy and change. It owns the stock whenever the price is
+above its 20-day average:
 
 ```python
 def my_strategy_signals(prices, window=20):
-    """One or two sentences: what the rule is and why it might work."""
+    """Own the stock while the price is above its recent average."""
     _check_history(prices, window)
     df = prices.copy()
 
     average = df["Price"].rolling(window).mean()
-    df[f"Line: {window}-day average"] = average          # optional: show on the chart
+    df[f"Line: {window}-day average"] = average
 
-    df["Signal"] = (df["Price"] > average).astype(float)  # your rule goes here
-    df.loc[average.isna(), "Signal"] = float("nan")       # warm-up period
+    df["Signal"] = (df["Price"] > average).astype(float)
+    df.loc[average.isna(), "Signal"] = float("nan")
     return df
 ```
 
-Then register it at the bottom of the same file:
+The `Line:` column is optional. Any column whose name starts with `Line: ` gets drawn on
+the price chart, which helps people see what your strategy is doing.
+
+Then add your strategy to the `STRATEGIES` list at the bottom of the same file:
 
 ```python
 STRATEGIES = {
@@ -60,51 +82,67 @@ STRATEGIES = {
 }
 ```
 
-That's it. It now shows up everywhere automatically, using its default settings:
+And that's it. Your strategy now shows up in the command line, in the web app's menu,
+and in the leaderboard, using its default settings. Try it:
 
-- the command line: `python backtest.py --csv data/SPY.csv --strategy my_strategy`
-- the strategy leaderboard: `--compare`
-- the web app's strategy menu and leaderboard tab
-- the test that checks every strategy follows the contract
+```bash
+python backtest.py --csv data/SPY.csv --strategy my_strategy
+python backtest.py --csv data/SPY.csv --compare
+```
 
-Optional: to make its settings adjustable, add them to `strategy_settings()` in
-`backtest.py` and add sliders in the sidebar section of `app.py`. Copy how the other
-strategies do it.
+If you want people to be able to adjust your strategy's settings, add them to
+`strategy_settings()` in `backtest.py` and add sliders to the sidebar in `app.py`. Copy
+whatever the existing strategies do. This step is optional.
 
-### The one rule: no peeking into the future
+## Don't peek at the future
 
-A signal on day *t* may only use prices up to and including day *t*. The engine already
-waits until the next day to act on it. So never use `.shift(-1)` or anything else that
-looks at future rows. If a backtest looks too good to be true, check this first.
+This is the one rule that really matters. On any given day, your strategy can only use
+prices from that day or earlier. The backtester already waits until the next day before
+acting on a signal, so you don't need to handle that yourself. Just never look at future
+rows, for example with `.shift(-1)`.
 
-## 4. Add a test
+It's an easy mistake to make, and it makes results look incredible. If your strategy
+suddenly crushes the market, check for this first.
 
-Add a small test to [`tests/test_strategies.py`](tests/test_strategies.py) using a tiny
-price series where you can work out the right answer by hand. Look at the existing tests
-for examples. Then run:
+## Adding a test
+
+There's already a test that checks every strategy returns signals between 0 and 1, and
+it covers yours automatically. It's still worth writing one test of your own: make up a
+tiny price series where you know what your strategy should do, and check that it does
+it. There are examples in [`tests/test_strategies.py`](tests/test_strategies.py).
+
+Run the tests again when you're done:
 
 ```bash
 pytest
 ```
 
-## 5. Open a pull request
+## Sharing your work
+
+Save your changes and push them to GitHub:
 
 ```bash
 git add -A
-git commit -m "Add RSI strategy"
-git push -u origin add-rsi-strategy
+git commit -m "Add my strategy"
+git push -u origin add-my-strategy
 ```
 
-Then open the link GitHub prints and create a pull request. Describe what your strategy
-does and paste its leaderboard row (`python backtest.py --csv data/SPY.csv --compare`).
-GitHub runs all the tests automatically. A green check means they passed.
+GitHub will print a link. Open it and create a pull request. In the description, say what
+your strategy does and why you think it might work, and paste its row from the
+`--compare` leaderboard. GitHub runs all the tests automatically. A green check means
+everything passed, and then someone from the club will look it over.
 
-## Ideas to work on
+## Looking for an idea?
 
-- New strategies: RSI, Bollinger band breakouts, dual momentum, combining trend + volatility targeting
-- Out-of-sample testing (pick settings on old data, test on newer data)
-- A non-zero risk-free rate for Sharpe, Sortino and alpha
-- Portfolios of several tickers
+Here are a few things we'd love to see:
 
-Have an idea but not sure how to start? Post it in
-[Discussions](https://github.com/mits-fhda/mits-backtester/discussions).
+- more strategies, like RSI, Bollinger band breakouts, or combining a trend rule with
+  volatility targeting
+- out-of-sample testing: pick the best settings using older data, then see how they do
+  on newer data the strategy has never seen
+- letting cash earn a realistic interest rate
+- testing a portfolio of several tickers at once
+
+If you have a different idea, post it in
+[Discussions](https://github.com/mits-fhda/mits-backtester/discussions) first so others
+can weigh in.
