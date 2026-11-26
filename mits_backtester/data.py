@@ -7,7 +7,8 @@ def load_data(csv_path):
     """Read a Yahoo Finance-style CSV and return a clean DataFrame.
 
     Expected columns: Date, Open, High, Low, Close, Adj Close, Volume.
-    Only Date and Close are strictly required.
+    Only Date and Close are strictly required. `csv_path` can also be an
+    open file (that's how the web app passes uploaded files).
 
     The returned DataFrame:
       * is indexed by date, sorted from oldest to newest
@@ -15,7 +16,26 @@ def load_data(csv_path):
         It is "Adj Close" when available (it accounts for dividends and
         stock splits), otherwise "Close".
     """
-    df = pd.read_csv(csv_path)
+    return clean_prices(pd.read_csv(csv_path))
+
+
+def download_data(ticker, start="2000-01-01", end=None):
+    """Download daily prices from Yahoo Finance, cleaned the same way as load_data.
+
+    Needs the optional `yfinance` package and an internet connection.
+    """
+    import yfinance as yf  # imported here so the rest of the tool works without it
+
+    raw = yf.Ticker(ticker).history(start=start, end=end, auto_adjust=False)
+    if raw.empty:
+        raise ValueError(f"No data returned for '{ticker}'. Check the ticker symbol.")
+    raw.index = raw.index.tz_localize(None)  # plain dates, no timezone
+    return clean_prices(raw.reset_index())   # turns the Date index back into a column
+
+
+def clean_prices(df):
+    """Shared cleaning steps for prices from a CSV or from a download."""
+    df = df.copy()
 
     # Some exports have stray spaces in the header, e.g. " Close".
     df.columns = [col.strip() for col in df.columns]
