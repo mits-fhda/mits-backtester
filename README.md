@@ -1,6 +1,7 @@
 # MITS Backtester
 
 [![tests](https://github.com/mamoonrkhan/mits-backtester/actions/workflows/tests.yml/badge.svg)](https://github.com/mamoonrkhan/mits-backtester/actions/workflows/tests.yml)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://mits-backtester.streamlit.app/)
 
 A small, readable Python tool for **backtesting** trading strategies, built for the
 Mathematical Investment and Trading Society (MITS). A backtest asks: *if I had followed
@@ -86,6 +87,10 @@ outlier.
 ![Parameter sweep](docs/images/SPY_parameter_sweep.png)
 
 ## Interactive web app
+
+**Try it online: [mits-backtester.streamlit.app](https://mits-backtester.streamlit.app/)** (no install needed).
+
+To run it on your own computer:
 
 ```bash
 streamlit run app.py
