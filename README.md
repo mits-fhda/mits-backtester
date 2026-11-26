@@ -238,3 +238,7 @@ The backtester makes some simplifying assumptions:
 ## Disclaimer
 
 Educational project. This is not investment advice.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
